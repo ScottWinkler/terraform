@@ -96,6 +96,11 @@ func (c *PlanCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Emit any diagnostics we've accumulated before we delegate to the
+	// backend, since the backend will handle its own diagnostics internally.
+	c.showDiagnostics(diags)
+	diags = nil
+
 	// Build the operation
 	opReq := c.Operation()
 	opReq.Destroy = destroy
@@ -108,19 +113,17 @@ func (c *PlanCommand) Run(args []string) int {
 	// Perform the operation
 	op, err := c.RunOperation(b, opReq)
 	if err != nil {
-		diags = diags.Append(err)
-	}
-
-	c.showDiagnostics(diags)
-	if diags.HasErrors() {
+		c.showDiagnostics(err)
 		return 1
 	}
 
+	if op.Result != backend.OperationSuccess {
+		return op.Result.ExitStatus()
+	}
 	if detailed && !op.PlanEmpty {
 		return 2
 	}
-
-	return 0
+	return op.Result.ExitStatus()
 }
 
 func (c *PlanCommand) Help() string {

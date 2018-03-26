@@ -6,7 +6,6 @@ import (
 
 	"github.com/hashicorp/terraform/backend"
 	"github.com/hashicorp/terraform/config"
-	"github.com/hashicorp/terraform/terraform"
 	"github.com/hashicorp/terraform/tfdiags"
 )
 
@@ -69,6 +68,12 @@ func (c *RefreshCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Before we delegate to the backend, we'll print any warning diagnostics
+	// we've accumulated here, since the backend will start fresh with its own
+	// diagnostics.
+	c.showDiagnostics(diags)
+	diags = nil
+
 	// Build the operation
 	opReq := c.Operation()
 	opReq.Type = backend.OperationTypeRefresh
@@ -76,20 +81,21 @@ func (c *RefreshCommand) Run(args []string) int {
 
 	op, err := c.RunOperation(b, opReq)
 	if err != nil {
-		diags = diags.Append(err)
-	}
-
-	c.showDiagnostics(diags)
-	if diags.HasErrors() {
+		c.showDiagnostics(err)
 		return 1
 	}
-
-	// Output the outputs
-	if outputs := outputsAsString(op.State, terraform.RootModulePath, nil, true); outputs != "" {
-		c.Ui.Output(c.Colorize().Color(outputs))
+	if op.Result != backend.OperationSuccess {
+		return op.Result.ExitStatus()
 	}
 
-	return 0
+	// TODO: Print outputs, once this is updated to use new config types.
+	/*
+		if outputs := outputsAsString(op.State, terraform.RootModulePath, nil, true); outputs != "" {
+			c.Ui.Output(c.Colorize().Color(outputs))
+		}
+	*/
+
+	return op.Result.ExitStatus()
 }
 
 func (c *RefreshCommand) Help() string {
